@@ -1,4 +1,13 @@
-import { chromium, type Page } from 'playwright'
+import { chromium, type Browser, type Page } from 'playwright'
+
+let _browser: Browser | null = null
+
+async function getBrowser(): Promise<Browser> {
+  if (_browser?.isConnected()) return _browser
+  _browser = await chromium.launch({ headless: true })
+  _browser.on('disconnected', () => { _browser = null })
+  return _browser
+}
 
 // お問い合わせページとして試みるパス
 const CONTACT_PATHS = [
@@ -170,13 +179,12 @@ export async function submitContactForm(
   url: string,
   data: { name: string; email: string; company: string; message: string }
 ): Promise<{ success: boolean; error?: string }> {
-  const browser = await chromium.launch({ headless: true })
+  const browser = await getBrowser()
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+  })
+  const page = await context.newPage()
   try {
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-    })
-    const page = await context.newPage()
-
     const found = await findContactPage(page, url)
     if (!found) {
       return { success: false, error: 'お問い合わせフォームが見つかりませんでした' }
@@ -208,6 +216,7 @@ export async function submitContactForm(
   } catch (e: unknown) {
     return { success: false, error: e instanceof Error ? e.message : String(e) }
   } finally {
-    await browser.close()
+    await page.close().catch(() => {})
+    await context.close().catch(() => {})
   }
 }
